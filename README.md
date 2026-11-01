@@ -36,7 +36,7 @@ npm run preview
   there is no full-screen post-processing pass.
 
 ## Play online / updates
-Pushing to `main` builds and publishes the game to GitHub Pages automatically (see `.github/workflows/deploy.yml`).
-Enable it once under Settings -> Pages -> Source: GitHub Actions. The build uses relative paths, so the same
-`dist/` also works inside an iframe / in-app web view. Each new deploy gets new hashed file names, so reloading the
-page always picks up the latest version.
+Pushing to `main` builds the game and publishes it to the `gh-pages` branch automatically
+(`.github/workflows/deploy.yml`). Enable it once: Settings -> Pages -> Source: *Deploy from a branch*,
+branch `gh-pages`, folder `/ (root)`. The build uses relative paths, so the same output also works inside an
+iframe / in-app web view. Every deploy produces new hashed file names, so reloading always loads the latest version.
