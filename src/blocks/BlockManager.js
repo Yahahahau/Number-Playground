@@ -583,6 +583,7 @@ export class BlockManager {
         this.foamList.push({ x: b.mesh.position.x, z: b.mesh.position.z, r: b.edge * 0.75, k: Math.min(0.9, 0.25 + b.sub * 1.6) });
       }
     }
+    this.contact.visible = this.game.world.shadowsOn;
     this.contact.count = ci;
     this.contact.instanceMatrix.needsUpdate = true;
     this.shStrength.needsUpdate = true;

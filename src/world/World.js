@@ -44,12 +44,20 @@ export class World {
 
     this.sun = new THREE.DirectionalLight(0xfff0d8, 2.7);
     this.sun.castShadow = true;
-    this.sun.shadow.bias = -0.0004;
-    this.sun.shadow.normalBias = 0.05;
-    this.sun.shadow.camera.near = 1;
-    this.sun.shadow.camera.far = 140;
+    // small biases: just enough to avoid acne, without lifting the shadow off the ground (no gap under blocks)
+    this.sun.shadow.bias = -0.0005;
+    this.sun.shadow.normalBias = 0.012;
+    this.sun.shadow.camera.near = 20;
+    this.sun.shadow.camera.far = 125;
+    this.sun.castShadow = false; // real-time shadows are opt-in (Settings)
+    this.shadowsOn = false;
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
+  }
+
+  setShadows(on) {
+    this.shadowsOn = on;
+    this.sun.castShadow = on;
   }
 
   setShadowRange(r) {

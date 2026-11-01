@@ -3,7 +3,7 @@
 First-person physics sandbox for phones (portrait). Grab, push, pull, rotate and throw number blocks with a
 Physics Gun; slam two blocks together hard enough and they merge (values add: 2 + 4 = 6). Every new number is
 saved to your Collection and can be spawned again. Daily challenges, a pond with an interactive water shader,
-real shadows, three graphics presets (default Low).
+optional real-time shadows (off by default, toggle in Settings), three graphics presets (default Low).
 
 Stack: Three.js, Rapier3D (`@dimforge/rapier3d-compat`), Vite. Numbers are `BigInt` end to end and are stored
 as decimal strings in `localStorage`.

@@ -375,6 +375,7 @@ export class Panels {
         .map((q) => `<button type="button" data-q="${q.id}" class="${s.quality === q.id ? 'on' : ''}">${q.label}</button>`)
         .join('')}</div>
       <p class="note">Low is the default and keeps phones cool. You can change this at any time without restarting.</p>
+      <div class="setting"><label>Shadows</label><button class="switch${s.shadows ? ' on' : ''}" type="button" data-shadows aria-label="Toggle shadows"></button></div>
       <div class="section">Audio &amp; controls</div>
       <div class="setting"><label>Sound</label><button class="switch${s.sound ? ' on' : ''}" type="button" data-sound aria-label="Toggle sound"></button></div>
       <div class="setting"><label>Volume</label><input type="range" min="0" max="1" step="0.05" value="${s.volume}" data-vol /></div>
@@ -400,6 +401,11 @@ export class Panels {
         this.render();
       }),
     );
+    body.querySelector('[data-shadows]').addEventListener('click', () => {
+      g.setShadows(!s.shadows);
+      g.audio.tap();
+      this.render();
+    });
     body.querySelector('[data-sound]').addEventListener('click', () => {
       s.sound = !s.sound;
       g.audio.unlock();

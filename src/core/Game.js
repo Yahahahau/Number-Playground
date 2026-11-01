@@ -196,6 +196,7 @@ export class Game {
     const s = this.save.data.settings;
     this.audio.setEnabled(s.sound);
     this.audio.setVolume(s.volume);
+    this.world.setShadows(!!s.shadows);
     this.applyQuality();
   }
 
@@ -214,6 +215,13 @@ export class Game {
     this.applyQuality();
     this.save.save(true);
     this.events.emit('toast', { text: `Graphics: ${this.quality.label}`, kind: 'info' });
+  }
+
+  setShadows(on) {
+    this.save.data.settings.shadows = on;
+    this.world.setShadows(on);
+    this.save.save(true);
+    this.events.emit('toast', { text: `Shadows ${on ? 'on' : 'off'}`, kind: 'info' });
   }
 
   resize() {
