@@ -1,0 +1,19 @@
+{
+  "name": "number-playground",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "First-person physics sandbox: grab, throw and merge number blocks. Three.js + Rapier3D.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.14.0",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
+  }
+}

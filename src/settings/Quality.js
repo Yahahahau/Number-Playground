@@ -1,0 +1,58 @@
+// Graphics presets. Default is LOW so phones never start hot.
+export const QUALITY = {
+  low: {
+    id: 'low',
+    label: 'Low',
+    pixelRatio: 1,
+    shadowMap: 1024,
+    shadowRange: 22,
+    particles: 160,
+    particleScale: 0.55,
+    grass: 1400,
+    waterSegments: 40,
+    ripples: 8,
+    envSize: 0,
+    envInterval: 0,
+    rockShadows: false,
+    waterDetail: 0,
+    fog: [30, 130],
+  },
+  medium: {
+    id: 'medium',
+    label: 'Medium',
+    pixelRatio: 1.5,
+    shadowMap: 2048,
+    shadowRange: 28,
+    particles: 380,
+    particleScale: 1,
+    grass: 3800,
+    waterSegments: 72,
+    ripples: 12,
+    envSize: 96,
+    envInterval: 4,
+    rockShadows: true,
+    waterDetail: 1,
+    fog: [40, 160],
+  },
+  high: {
+    id: 'high',
+    label: 'High',
+    pixelRatio: 2,
+    shadowMap: 3072,
+    shadowRange: 34,
+    particles: 720,
+    particleScale: 1.6,
+    grass: 7000,
+    waterSegments: 120,
+    ripples: 16,
+    envSize: 192,
+    envInterval: 2.2,
+    rockShadows: true,
+    waterDetail: 1,
+    fog: [50, 190],
+  },
+};
+
+export function getQuality(id) {
+  return QUALITY[id] || QUALITY.low;
+}
