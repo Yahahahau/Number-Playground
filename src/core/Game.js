@@ -103,16 +103,11 @@ export class Game {
     this.bindControls();
     this.applySettings();
     this.resize();
-    new ResizeObserver(() => this.resize()).observe(this.appEl);
-    window.addEventListener('resize', () => this.resize());
-    document.addEventListener('visibilitychange', () => {
-      this.last = performance.now();
-      if (document.visibilityState === 'hidden') this.save.flush();
-    });
-    // browsers need a gesture before audio / fullscreen
-    const first = (e) => {
+    this.installViewportWatch();
+    this.installWebViewGuards();
+    // audio needs a first gesture (fullscreen is never forced: WebViews manage their own chrome)
+    const first = () => {
       this.audio.unlock();
-      if (e.pointerType === 'touch') this.tryFullscreen();
       window.removeEventListener('pointerdown', first, true);
     };
     window.addEventListener('pointerdown', first, true);
@@ -224,17 +219,84 @@ export class Game {
     this.events.emit('toast', { text: `Shadows ${on ? 'on' : 'off'}`, kind: 'info' });
   }
 
+  /** Watches the real container (not the device screen) and coalesces bursts into one resize per frame. */
+  installViewportWatch() {
+    const probe = document.createElement('div');
+    probe.style.cssText =
+      'position:absolute;visibility:hidden;pointer-events:none;width:0;height:0;' +
+      'padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+    this.appEl.appendChild(probe);
+    this._safeProbe = probe;
+    const schedule = () => {
+      if (this._rz) return;
+      this._rz = requestAnimationFrame(() => {
+        this._rz = 0;
+        this.resize();
+      });
+    };
+    new ResizeObserver(schedule).observe(this.appEl);
+    window.addEventListener('resize', schedule);
+    window.addEventListener('orientationchange', schedule);
+    window.visualViewport?.addEventListener('resize', schedule);
+  }
+
+  /** Keep the page itself still while playing inside an in-app WebView. */
+  installWebViewGuards() {
+    const stop = (e) => e.cancelable && e.preventDefault();
+    const el = this.appEl;
+    el.addEventListener('touchmove', stop, { passive: false });
+    el.addEventListener('dblclick', stop);
+    for (const t of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(t, stop);
+    // iOS double-tap zoom fallback
+    let lastEnd = 0;
+    document.addEventListener(
+      'touchend',
+      (e) => {
+        const now = performance.now();
+        if (now - lastEnd < 320 && !(e.target instanceof HTMLInputElement)) stop(e);
+        lastEnd = now;
+      },
+      { passive: false },
+    );
+    window.addEventListener('scroll', () => window.scrollTo(0, 0), { passive: true });
+    document.addEventListener('contextmenu', stop);
+
+    // app goes to the background / returns: drop touches, don't replay the lost time into physics
+    const hidden = () => {
+      this.input.reset();
+      this.gun.setPull(false);
+      this.save.flush();
+      this.audio.suspend?.();
+    };
+    const shown = () => {
+      this.last = performance.now();
+      this.acc = 0;
+      this.audio.resume?.();
+      this.resize();
+    };
+    document.addEventListener('visibilitychange', () => (document.visibilityState === 'hidden' ? hidden() : shown()));
+    window.addEventListener('pagehide', hidden);
+    window.addEventListener('pageshow', shown);
+    window.addEventListener('blur', () => this.input.reset());
+  }
+
   resize() {
     const w = Math.max(1, this.appEl.clientWidth);
     const h = Math.max(1, this.appEl.clientHeight);
-    if (this._w === w && this._h === h && this._pr === this.renderer.getPixelRatio()) return;
+    const pr = this.renderer.getPixelRatio();
+    if (this._safeProbe) {
+      const cs = getComputedStyle(this._safeProbe);
+      this.appEl.style.setProperty('--safe-t-px', cs.paddingTop);
+    }
+    if (this._w === w && this._h === h && this._pr === pr) return;
     this._w = w;
     this._h = h;
-    this._pr = this.renderer.getPixelRatio();
-    this.renderer.setSize(w, h, false);
+    this._pr = pr;
+    this.renderer.setSize(w, h, false); // canvas CSS size is 100%; only the drawing buffer changes
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.effects?.setViewportHeight(h * this._pr);
+    this.effects?.setViewportHeight(h * pr);
+    this.events.emit('resize', { w, h });
   }
 
   tryFullscreen() {

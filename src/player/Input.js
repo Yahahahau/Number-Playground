@@ -67,6 +67,7 @@ export class Input {
       /* not capturable */
     }
     if (z.joy && this.joyId === null && !isMouse) {
+      this.radius = Math.max(40, (this.joyBase.offsetWidth || 108) / 2);
       this.joyId = e.pointerId;
       const bx = Math.min(Math.max(z.x, this.radius + 8), z.w * 0.52);
       const by = Math.min(Math.max(z.y, z.h * 0.42 + this.radius), z.h - this.radius - 8);

@@ -66,25 +66,28 @@ export class UI {
 
     for (const el of [this.touch, this.joyHint, this.joy, this.crosshair, this.inspect, this.toasts, this.mergeText, this.banner, this.tutorial, this.rotateHint, this.blockCount]) r.appendChild(el);
 
-    // top-left: daily challenge chip
+    // top-left: best number found
     const tl = $('<div class="top-left"></div>');
-    this.dailyChip = $(`<button class="chip" type="button" aria-label="Daily challenge">${svg('star')}<div><div class="dtxt">Daily 0/3</div><small>Challenges</small></div></button>`);
-    tl.appendChild(this.dailyChip);
+    this.bestChip = $(`<button class="chip" type="button" aria-label="Highest number found">${svg('star')}<div><div class="dtxt best-val">1</div><small>Best</small></div></button>`);
+    tl.appendChild(this.bestChip);
     r.appendChild(tl);
 
-    // top-right: help + settings
+    // top-right: collection + settings
     const tr = $('<div class="top-right"></div>');
-    this.btnHelp = this.iconBtn('help', 'Help');
+    this.btnCollection = this.iconBtn('collection', 'Numbers');
     this.btnSettings = this.iconBtn('settings', 'Settings');
-    tr.append(this.btnHelp, this.btnSettings);
+    tr.append(this.btnCollection, this.btnSettings);
     r.appendChild(tr);
 
-    // left rail: collection, spawn, reset
+    // left rail (secondary tools): daily, spawn, reset, help
     const rail = $('<div class="rail-left"></div>');
-    this.btnCollection = this.iconBtn('collection', 'Numbers');
+    this.dailyChip = this.iconBtn('star', 'Daily');
+    this.dailyChip.classList.add('btn-daily');
+    this.dailyChip.querySelector('span').classList.add('dtxt');
     this.btnSpawn = this.iconBtn('spawn', 'Spawn');
     this.btnReset = this.iconBtn('reset', 'Reset');
-    rail.append(this.btnCollection, this.btnSpawn, this.btnReset);
+    this.btnHelp = this.iconBtn('help', 'Help');
+    rail.append(this.dailyChip, this.btnSpawn, this.btnReset, this.btnHelp);
     r.appendChild(rail);
 
     // right column: gun actions
@@ -102,21 +105,30 @@ export class UI {
     this.wireButtons();
   }
 
-  /** Spread the action column across the available height (keeps the gun area clear). */
+  /** Size + stack the gun buttons from the real container size (independent of the 3D scene). */
   layoutActions() {
-    const h = this.root.clientHeight || 800;
-    const bottomStart = Math.max(150, h * 0.215); // gun lives below this
-    const size = h < 640 ? 52 : 58;
-    const gap = h < 640 ? 6 : 10;
-    const list = [this.btnThrow, this.btnRotate, this.btnPull, this.btnPush];
-    let b = bottomStart;
-    for (const el of list) {
+    const w = this.root.clientWidth || 430;
+    const h = this.root.clientHeight || 870;
+    const u = Math.min(Math.max(Math.min(w / 430, h / 870), 0.78), 1.25);
+    const safeTop = parseFloat(getComputedStyle(this.root).getPropertyValue('--safe-t-px')) || 0;
+    const gunClear = Math.max(150, h * 0.215); // keep the gun view-model area clear
+    const topReserve = safeTop + 64 + 10; // HUD row + gap
+    let size = Math.max(48, Math.round(58 * u));
+    let gap = Math.max(6, Math.round(10 * u));
+    let grab = Math.max(60, Math.round(74 * u));
+    const avail = h - gunClear - topReserve - 4;
+    const need = () => 4 * size + 3 * gap + gap + grab;
+    // too tight vertically: shrink spacing first, then sizes (never below comfortable touch targets)
+    while (need() > avail && gap > 4) gap--;
+    while (need() > avail && grab > 58) grab--;
+    while (need() > avail && size > 46) size--;
+    let b = Math.min(gunClear, Math.max(110, h - topReserve - need()));
+    for (const el of [this.btnThrow, this.btnRotate, this.btnPull, this.btnPush]) {
       el.style.width = el.style.height = size + 'px';
       el.style.bottom = `calc(var(--safe-b) + ${b}px)`;
       b += size + gap;
     }
-    const gs = h < 640 ? 66 : 74;
-    this.btnGrab.style.width = this.btnGrab.style.height = gs + 'px';
+    this.btnGrab.style.width = this.btnGrab.style.height = grab + 'px';
     this.btnGrab.style.bottom = `calc(var(--safe-b) + ${b + 2}px)`;
   }
 
@@ -209,13 +221,21 @@ export class UI {
       this.btnRotate.classList.toggle('rot-on', on);
       this.rotateHint.classList.toggle('show', on);
     });
+    this.bestChip.addEventListener('click', () => this.panels.open('collection'));
+    ev.on('discover', () => this.updateBest());
     this.updateDaily();
+    this.updateBest();
+  }
+
+  updateBest() {
+    const m = this.game.save.data.maxValue || '1';
+    this.bestChip.querySelector('.best-val').textContent = fmtCompact(BigInt(m));
   }
 
   updateDaily() {
     const d = this.game.daily;
     const done = d.quests.filter((q) => q.done).length;
-    this.dailyChip.querySelector('.dtxt').textContent = `Daily ${done}/${d.quests.length || 3}`;
+    this.dailyChip.querySelector('.dtxt').textContent = `${done}/${d.quests.length || 3}`;
     this.dailyChip.classList.toggle('on', done === d.quests.length && done > 0);
   }
 
