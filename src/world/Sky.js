@@ -38,7 +38,7 @@ export function createSky(sunDir) {
         #include <colorspace_fragment>
       }`,
   });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(450, 24, 14), mat);
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(380, 32, 18), mat);
   mesh.frustumCulled = false;
   mesh.renderOrder = -10;
   return mesh;
