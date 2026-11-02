@@ -1,4 +1,4 @@
-// Natural environment: terrain + collider, path, trees, rocks, flowers, grass, clouds, lighting.
+// Clean arena: flat green ground, path, pond, a few edge trees and shore rocks, clouds, lighting.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
@@ -30,7 +30,6 @@ export class World {
     this.buildPath();
     this.buildTrees();
     this.buildRocksAndFlowers();
-    this.buildGrass();
     this.buildClouds();
     this.buildBoundary();
     this.setQuality(quality);
@@ -81,7 +80,7 @@ export class World {
     const nor = new Float32Array(vcount * 3);
     const idx = new Uint32Array(n * n * 6);
 
-    const grassA = new THREE.Color('#5fae3f');
+    const grassA = new THREE.Color('#6bb546');
     const grassB = new THREE.Color('#79c250');
     const grassDry = new THREE.Color('#9bb552');
     const dirt = new THREE.Color('#8a6a45');
@@ -108,12 +107,8 @@ export class World {
         nor[k * 3 + 1] = (2 * e) / l;
         nor[k * 3 + 2] = -dz / l;
 
-        // colour
-        const patch = fbm(x * 0.12 + 40, z * 0.12 - 10);
-        tmp.copy(grassA).lerp(grassB, smoothstep(0.35, 0.65, patch));
-        tmp.lerp(grassDry, smoothstep(0.62, 0.8, fbm(x * 0.05 - 7, z * 0.05 + 3)) * 0.55);
-        const fine = (fbm(x * 0.9, z * 0.9) - 0.5) * 0.1;
-        tmp.offsetHSL(0, 0, fine);
+        // colour: one clean green (no patches / noise)
+        tmp.copy(grassA);
         // dirt border along the path
         const dp = distToPath(x, z);
         tmp.lerp(dirt, (1 - smoothstep(1.7, 3.1, dp)) * 0.85);
@@ -248,16 +243,17 @@ export class World {
       for (let a = 0; a < tries; a++) {
         const x = (rnd() * 2 - 1) * (WORLD_HALF - 2);
         const z = (rnd() * 2 - 1) * (WORLD_HALF - 2);
+        if (Math.max(Math.abs(x), Math.abs(z)) < WORLD_HALF - 12) continue; // edge of the arena only
         if (Math.hypot(x - START.x, z - START.z) < 17) continue; // keep the start area clear
         if (distToPath(x, z) < 4.2) continue;
         if (Math.hypot(x - POND.x, z - POND.z) < POND.bowl + 2.5) continue;
         if (spots.some((s) => Math.hypot(s.x - x, s.z - z) < minDist)) continue;
         spots.push({ x, z, y: terrainHeight(x, z), r: rnd(), s: 0.8 + rnd() * 0.7, rot: rnd() * 6.28 });
         if (accept && !accept(spots[spots.length - 1])) spots.pop();
-        if (spots.length >= 90) return;
+        if (spots.length >= 16) return;
       }
     };
-    tryPlace(5.2, 900);
+    tryPlace(9, 1500);
     this.treeSpots = spots;
 
     const species = { pine: [], round: [], poplar: [], birch: [] };
@@ -326,24 +322,18 @@ export class World {
     build(species.birch, birchGeo, birchMat, [0.2, 0.05, 0.6, 0.38], 2.4);
   }
 
-  // ------------------------------------------------------------------ rocks / flowers / bushes
+  // ------------------------------------------------------------------ shore rocks
 
   buildRocksAndFlowers() {
     const rnd = mulberry32(777);
     const R = this.physics.RAPIER;
 
-    // rocks (some around the pond shore)
+    // a few rocks on the pond shore (the only small decoration besides edge trees)
     const rocks = [];
-    for (let a = 0; a < 26; a++) {
+    for (let a = 0; a < 7; a++) {
       const ang = rnd() * Math.PI * 2;
       const rad = POND.bowl * (0.74 + rnd() * 0.3);
       rocks.push({ x: POND.x + Math.cos(ang) * rad, z: POND.z + Math.sin(ang) * rad, s: 0.35 + rnd() * 0.7 });
-    }
-    for (let a = 0; a < 40; a++) {
-      const x = (rnd() * 2 - 1) * (WORLD_HALF - 3);
-      const z = (rnd() * 2 - 1) * (WORLD_HALF - 3);
-      if (Math.hypot(x - START.x, z - START.z) < 14 || distToPath(x, z) < 3 || inPond(x, z, 1.5)) continue;
-      rocks.push({ x, z, s: 0.3 + rnd() * 0.9 });
     }
     const valid = rocks.filter((r) => distToPath(r.x, r.z) > 2.2 && !inPond(r.x, r.z, -1.2));
     const rockGeo = this.flat(new THREE.DodecahedronGeometry(1, 0));
@@ -366,146 +356,6 @@ export class World {
     this.rockMesh.receiveShadow = true;
     this.scene.add(this.rockMesh);
 
-    // bushes
-    const bushes = [];
-    for (let a = 0; a < 220 && bushes.length < 36; a++) {
-      const x = (rnd() * 2 - 1) * (WORLD_HALF - 2);
-      const z = (rnd() * 2 - 1) * (WORLD_HALF - 2);
-      if (Math.hypot(x - START.x, z - START.z) < 13 || distToPath(x, z) < 3 || inPond(x, z, 2)) continue;
-      bushes.push({ x, z, s: 0.6 + rnd() * 0.7 });
-    }
-    const bushGeo = this.flat(
-      mergeGeometries([
-        new THREE.IcosahedronGeometry(0.6, 1).translate(0, 0.5, 0),
-        new THREE.IcosahedronGeometry(0.45, 1).translate(0.45, 0.38, 0.1),
-        new THREE.IcosahedronGeometry(0.42, 1).translate(-0.4, 0.36, -0.15),
-      ]),
-    );
-    this.bushMesh = new THREE.InstancedMesh(bushGeo, new THREE.MeshLambertMaterial({ flatShading: true }), bushes.length);
-    bushes.forEach((b, i) => {
-      m.compose(new THREE.Vector3(b.x, terrainHeight(b.x, b.z) - 0.05, b.z), q.identity(), new THREE.Vector3(b.s, b.s, b.s));
-      this.bushMesh.setMatrixAt(i, m);
-      c.setHSL(0.27 + rnd() * 0.06, 0.5, 0.28 + rnd() * 0.08);
-      this.bushMesh.setColorAt(i, c);
-    });
-    this.bushMesh.castShadow = true;
-    this.scene.add(this.bushMesh);
-
-    // flowers
-    const fl = [];
-    for (let a = 0; a < 800 && fl.length < 240; a++) {
-      const x = (rnd() * 2 - 1) * (WORLD_HALF - 2);
-      const z = (rnd() * 2 - 1) * (WORLD_HALF - 2);
-      if (distToPath(x, z) < 2.0 || inPond(x, z, 1.2)) continue;
-      if (fbm(x * 0.09, z * 0.09) < 0.5) continue; // clustered in meadows
-      fl.push({ x, z });
-    }
-    const petal = new THREE.SphereGeometry(0.09, 6, 5).translate(0, 0.32, 0);
-    const stem = new THREE.CylinderGeometry(0.012, 0.012, 0.32, 4).translate(0, 0.16, 0);
-    stem.setAttribute('color', new THREE.BufferAttribute(new Float32Array(stem.attributes.position.count * 3).fill(0.35), 3));
-    petal.setAttribute('color', new THREE.BufferAttribute(new Float32Array(petal.attributes.position.count * 3).fill(1), 3));
-    const flowerGeo = mergeGeometries([stem, petal]);
-    this.flowerMesh = new THREE.InstancedMesh(flowerGeo, new THREE.MeshLambertMaterial({ vertexColors: true }), fl.length);
-    const palette = ['#ffffff', '#ffe14d', '#ff7aa8', '#c58bff', '#ff9a4d'];
-    fl.forEach((f, i) => {
-      m.compose(new THREE.Vector3(f.x, terrainHeight(f.x, f.z), f.z), q.identity(), new THREE.Vector3(1, 0.8 + rnd() * 0.7, 1));
-      this.flowerMesh.setMatrixAt(i, m);
-      this.flowerMesh.setColorAt(i, c.set(palette[Math.floor(rnd() * palette.length)]));
-    });
-    this.scene.add(this.flowerMesh);
-
-    // fallen logs
-    const logGeo = new THREE.CylinderGeometry(0.28, 0.3, 3.4, 8).rotateZ(Math.PI / 2);
-    const logMat = new THREE.MeshLambertMaterial({ color: 0x6d4a2e });
-    const spots = [[-14, 6, 0.5], [24, 14, 2.2], [-26, -18, 1.1]];
-    for (const [x, z, ry] of spots) {
-      const lg = new THREE.Mesh(logGeo, logMat);
-      const y = terrainHeight(x, z) + 0.26;
-      lg.position.set(x, y, z);
-      lg.rotation.y = ry;
-      lg.castShadow = true;
-      lg.receiveShadow = true;
-      this.scene.add(lg);
-      this.physics.addStaticCollider(
-        R.ColliderDesc.cuboid(1.7, 0.28, 0.28).setTranslation(x, y, z).setRotation(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, 0))),
-      );
-    }
-  }
-
-  // ------------------------------------------------------------------ grass
-
-  buildGrass() {
-    const rnd = mulberry32(99);
-    const MAX = 7000;
-    const blade = (ang, lean) => {
-      const ca = Math.cos(ang);
-      const sa = Math.sin(ang);
-      const w = 0.05;
-      const pts = [
-        [-w, 0, 0],
-        [w, 0, 0],
-        [lean * 0.4, 0.5, 0],
-      ];
-      return pts.map(([x, y, z]) => [x * ca - z * sa + lean * sa * 0.0, y, x * sa + z * ca + (y > 0.1 ? lean * 0.6 * ca : 0)]);
-    };
-    const verts = [];
-    const colors = [];
-    for (let k = 0; k < 4; k++) {
-      const ang = (k / 4) * Math.PI + 0.3;
-      const tri = blade(ang, 0.12 + 0.05 * k);
-      for (const v of tri) {
-        verts.push(v[0] * 1.3, v[1] * (0.8 + 0.1 * k), v[2] * 1.3);
-        colors.push(v[1] > 0.1 ? 1 : 0.55, v[1] > 0.1 ? 1 : 0.55, v[1] > 0.1 ? 1 : 0.55);
-      }
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    geo.computeVertexNormals();
-    // normals straight up so blades shade like the ground beneath them
-    const n = geo.attributes.normal;
-    for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
-
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
-    const wind = this.windUniform;
-    mat.onBeforeCompile = (sh) => {
-      sh.uniforms.uWind = wind;
-      sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float uWind;')
-        .replace(
-          '#include <begin_vertex>',
-          `#include <begin_vertex>
-           float sw = sin(uWind * 1.7 + instanceMatrix[3].x * 0.4 + instanceMatrix[3].z * 0.33);
-           transformed.x += sw * 0.09 * position.y * position.y * 4.0;
-           transformed.z += sw * 0.05 * position.y * position.y * 4.0;`,
-        );
-    };
-
-    this.grassMax = MAX;
-    this.grassMesh = new THREE.InstancedMesh(geo, mat, MAX);
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const c = new THREE.Color();
-    let placed = 0;
-    for (let a = 0; a < MAX * 3 && placed < MAX; a++) {
-      const x = (rnd() * 2 - 1) * (WORLD_HALF + 4);
-      const z = (rnd() * 2 - 1) * (WORLD_HALF + 4);
-      if (distToPath(x, z) < 1.6 || inPond(x, z, 0.4)) continue;
-      const y = terrainHeight(x, z);
-      if (y < WATER_Y + 0.15) continue;
-      const s = 0.7 + rnd() * 0.9;
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * 6.28);
-      m.compose(new THREE.Vector3(x, y - 0.02, z), q, new THREE.Vector3(s, s * (0.8 + rnd() * 0.6), s));
-      this.grassMesh.setMatrixAt(placed, m);
-      c.setHSL(0.24 + rnd() * 0.07, 0.5 + rnd() * 0.2, 0.34 + rnd() * 0.16);
-      this.grassMesh.setColorAt(placed, c);
-      placed++;
-    }
-    this.grassMesh.count = placed;
-    this.grassPlaced = placed;
-    this.grassMesh.frustumCulled = false;
-    this.grassMesh.receiveShadow = false;
-    this.scene.add(this.grassMesh);
   }
 
   // ------------------------------------------------------------------ clouds
@@ -525,11 +375,11 @@ export class World {
     tex.colorSpace = THREE.SRGBColorSpace;
     const rnd = mulberry32(5);
     this.cloudGroup = new THREE.Group();
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 6; i++) {
       const cx = (rnd() * 2 - 1) * 160;
       const cz = (rnd() * 2 - 1) * 160;
       const cy = 95 + rnd() * 40;
-      for (let k = 0; k < 4; k++) {
+      for (let k = 0; k < 3; k++) {
         const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, opacity: 0.6 });
         const sp = new THREE.Sprite(mat);
         sp.position.set(cx + (k - 1.5) * 16 + rnd() * 6, cy + rnd() * 3, cz + rnd() * 10);
@@ -567,9 +417,7 @@ export class World {
     this.setShadowRange(q.shadowRange);
     this.scene.fog.near = q.fog[0];
     this.scene.fog.far = q.fog[1];
-    this.grassMesh.count = Math.min(this.grassPlaced, q.grass);
     this.rockMesh.castShadow = q.rockShadows;
-    this.bushMesh.castShadow = q.rockShadows;
   }
 
   update(dt, t, focus, camera) {

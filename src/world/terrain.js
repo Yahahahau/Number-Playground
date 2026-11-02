@@ -59,7 +59,7 @@ export function fbm(x, z) {
 export function terrainHeight(x, z) {
   // gentle rolling hills, nearly flat around the start area so blocks behave nicely
   const ds = Math.hypot(x - START.x, z - START.z);
-  const amp = 0.08 + 0.92 * smoothstep(8, 26, ds);
+  const amp = 0.04 + 0.5 * smoothstep(12, 44, ds);
   let h = (fbm(x * 0.05, z * 0.05) - 0.5) * 1.5 * amp;
 
   // pond basin
