@@ -1,36 +1,37 @@
-// Clean arena: flat green ground, path, pond, a few edge trees and shore rocks, clouds, lighting.
+// Futuristic Number Lab: one flat metallic floor, a glowing force-field rim, a few geometric pylons,
+// a big energy ring as the landmark, and a static space skybox. A single Challenge pad is hidden
+// until Challenge mode turns it on. Everything is static (no per-frame work except the sky follow).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import {
-  terrainHeight, START, POND, WATER_Y, WORLD_HALF, MESH_HALF, pathCurve, distToPath, fbm,
-  mulberry32, smoothstep, inPond,
-} from './terrain.js';
 import { createSky, HORIZON } from './Sky.js';
+import { paintFloor, toTexture } from './SpaceArt.js';
+import { WORLD_HALF, FLOOR_HALF, PAD } from './terrain.js';
 
-const GRID = 128;
+const CYAN = 0x18d8ff;
+const BLUE = 0x2a6bff;
+const VIOLET = 0x8a3cff;
+const MAGENTA = 0xff2bd0;
 
 export class World {
   constructor(scene, physics, quality) {
     this.scene = scene;
     this.physics = physics;
     this.quality = quality;
-    this.sunDir = new THREE.Vector3(0.45, 0.78, 0.38).normalize();
-    this.treeSpots = [];
-    this.windUniform = { value: 0 };
-    this.clouds = [];
+    this.sunDir = new THREE.Vector3(0.35, 0.8, 0.45).normalize();
+    this.windUniform = { value: 0 }; // legacy, unused
+    this.padOn = false;
 
     scene.background = HORIZON.clone();
     scene.fog = new THREE.Fog(HORIZON.clone(), quality.fog[0], quality.fog[1]);
 
-    this.sky = createSky(this.sunDir);
+    this.sky = createSky();
     scene.add(this.sky);
 
     this.buildLights();
-    this.buildTerrain();
-    this.buildPath();
-    this.buildTrees();
-    this.buildRocksAndFlowers();
-    this.buildClouds();
+    this.buildFloor();
+    this.buildRim();
+    this.buildRing();
+    this.buildPad();
     this.buildBoundary();
     this.setQuality(quality);
   }
@@ -38,12 +39,11 @@ export class World {
   // ------------------------------------------------------------------ lights
 
   buildLights() {
-    this.hemi = new THREE.HemisphereLight(0xcfe8ff, 0x6a7a45, 1.15);
+    this.hemi = new THREE.HemisphereLight(0xa8d8ff, 0x3a2878, 1.0);
     this.scene.add(this.hemi);
 
-    this.sun = new THREE.DirectionalLight(0xfff0d8, 2.7);
-    this.sun.castShadow = true;
-    // small biases: just enough to avoid acne, without lifting the shadow off the ground (no gap under blocks)
+    this.sun = new THREE.DirectionalLight(0xdff2ff, 2.2);
+    // small biases: just enough to avoid acne, without lifting the shadow off the floor (no gap under blocks)
     this.sun.shadow.bias = -0.0005;
     this.sun.shadow.normalBias = 0.012;
     this.sun.shadow.camera.near = 20;
@@ -69,327 +69,155 @@ export class World {
     this.shadowRange = r;
   }
 
-  // ------------------------------------------------------------------ terrain
+  // ------------------------------------------------------------------ floor
 
-  buildTerrain() {
-    const n = GRID;
-    const size = MESH_HALF * 2;
-    const vcount = (n + 1) * (n + 1);
-    const pos = new Float32Array(vcount * 3);
-    const col = new Float32Array(vcount * 3);
-    const nor = new Float32Array(vcount * 3);
-    const idx = new Uint32Array(n * n * 6);
-
-    const grassA = new THREE.Color('#6bb546');
-    const grassB = new THREE.Color('#79c250');
-    const grassDry = new THREE.Color('#9bb552');
-    const dirt = new THREE.Color('#8a6a45');
-    const sand = new THREE.Color('#d8c98e');
-    const bed = new THREE.Color('#5d8a86');
-    const darkHill = new THREE.Color('#3f8a3c');
-    const tmp = new THREE.Color();
-
-    for (let j = 0; j <= n; j++) {
-      for (let i = 0; i <= n; i++) {
-        const k = j * (n + 1) + i;
-        const x = -MESH_HALF + (i / n) * size;
-        const z = -MESH_HALF + (j / n) * size;
-        const h = terrainHeight(x, z);
-        pos[k * 3] = x;
-        pos[k * 3 + 1] = h;
-        pos[k * 3 + 2] = z;
-
-        const e = 0.6;
-        const dx = terrainHeight(x + e, z) - terrainHeight(x - e, z);
-        const dz = terrainHeight(x, z + e) - terrainHeight(x, z - e);
-        const l = Math.hypot(dx, 2 * e, dz);
-        nor[k * 3] = -dx / l;
-        nor[k * 3 + 1] = (2 * e) / l;
-        nor[k * 3 + 2] = -dz / l;
-
-        // colour: one clean green (no patches / noise)
-        tmp.copy(grassA);
-        // dirt border along the path
-        const dp = distToPath(x, z);
-        tmp.lerp(dirt, (1 - smoothstep(1.7, 3.1, dp)) * 0.85);
-        // sandy banks and dark bed
-        const dpond = Math.hypot(x - POND.x, z - POND.z);
-        if (dpond < POND.bowl + 3) {
-          const wet = 1 - smoothstep(WATER_Y + 0.05, WATER_Y + 0.75, h);
-          tmp.lerp(sand, wet * 0.9);
-          tmp.lerp(bed, smoothstep(WATER_Y - 0.15, WATER_Y - 1.1, h));
-        }
-        const edge = Math.max(Math.abs(x), Math.abs(z));
-        tmp.lerp(darkHill, smoothstep(WORLD_HALF - 6, WORLD_HALF + 12, edge) * 0.7);
-        col[k * 3] = tmp.r;
-        col[k * 3 + 1] = tmp.g;
-        col[k * 3 + 2] = tmp.b;
-      }
-    }
-    let t = 0;
-    for (let j = 0; j < n; j++) {
-      for (let i = 0; i < n; i++) {
-        const a = j * (n + 1) + i;
-        const b = a + 1;
-        const c = a + n + 1;
-        const d = c + 1;
-        idx[t++] = a;
-        idx[t++] = c;
-        idx[t++] = b;
-        idx[t++] = b;
-        idx[t++] = c;
-        idx[t++] = d;
-      }
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    geo.setIndex(new THREE.BufferAttribute(idx, 1));
-    geo.computeBoundingSphere();
-    this.terrain = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
-    this.terrain.receiveShadow = true;
-    this.scene.add(this.terrain);
-
-    // the render mesh and the physics trimesh are built from the exact same vertices
-    this.physics.addStaticTrimesh(pos, new Uint32Array(idx));
-  }
-
-  // ------------------------------------------------------------------ path
-
-  buildPath() {
-    // alternating stone slabs
-    const cv = document.createElement('canvas');
-    cv.width = cv.height = 256;
-    const g = cv.getContext('2d');
-    g.fillStyle = '#6f6a62';
-    g.fillRect(0, 0, 256, 256);
-    const tones = ['#d9d1c1', '#b9b0a0'];
-    for (let r = 0; r < 4; r++) {
-      for (let c = 0; c < 4; c++) {
-        g.fillStyle = tones[(r + c) % 2];
-        g.fillRect(c * 64 + 3, r * 64 + 3, 58, 58);
-        g.fillStyle = 'rgba(255,255,255,0.12)';
-        g.fillRect(c * 64 + 3, r * 64 + 3, 58, 5);
-        g.fillStyle = 'rgba(0,0,0,0.08)';
-        g.fillRect(c * 64 + 3, r * 64 + 56, 58, 5);
-      }
-    }
-    const tex = new THREE.CanvasTexture(cv);
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 4;
-    this.pathTex = tex;
-
-    const curve = pathCurve();
-    const pts = curve.getSpacedPoints(150);
-    const half = 1.55;
-    const verts = [];
-    const uvs = [];
-    const ids = [];
-    let dist = 0;
-    for (let i = 0; i < pts.length; i++) {
-      const p = pts[i];
-      const q = pts[Math.min(pts.length - 1, i + 1)];
-      const o = pts[Math.max(0, i - 1)];
-      const tx = q.x - o.x;
-      const tz = q.z - o.z;
-      const l = Math.hypot(tx, tz) || 1;
-      const nx = -tz / l;
-      const nz = tx / l;
-      if (i > 0) dist += Math.hypot(p.x - pts[i - 1].x, p.z - pts[i - 1].z);
-      for (const s of [-1, 1]) {
-        const x = p.x + nx * half * s;
-        const z = p.z + nz * half * s;
-        verts.push(x, terrainHeight(x, z) + 0.05, z);
-        uvs.push(s < 0 ? 0 : 1.5, dist / 1.5);
-      }
-      if (i < pts.length - 1) {
-        const a = i * 2;
-        ids.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-      }
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-    geo.setIndex(ids);
-    geo.computeVertexNormals();
-    // make sure normals point up regardless of winding
-    const nrm = geo.attributes.normal;
-    for (let i = 0; i < nrm.count; i++) if (nrm.getY(i) < 0) nrm.setXYZ(i, -nrm.getX(i), -nrm.getY(i), -nrm.getZ(i));
-    const mat = new THREE.MeshLambertMaterial({
-      map: tex,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2,
+  buildFloor() {
+    const [alb, emi] = paintFloor();
+    const tiles = (FLOOR_HALF * 2) / 16;
+    const map = toTexture(alb, { repeat: true, aniso: 4 });
+    const emissiveMap = toTexture(emi, { repeat: true, aniso: 4 });
+    map.repeat.set(tiles, tiles);
+    emissiveMap.repeat.set(tiles, tiles);
+    const geo = new THREE.PlaneGeometry(FLOOR_HALF * 2, FLOOR_HALF * 2);
+    geo.rotateX(-Math.PI / 2);
+    const mat = new THREE.MeshStandardMaterial({
+      map,
+      emissiveMap,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.85,
+      roughness: 0.42,
+      metalness: 0.65,
+      envMapIntensity: 0.9,
     });
-    this.path = new THREE.Mesh(geo, mat);
-    this.path.receiveShadow = true;
-    this.scene.add(this.path);
-  }
+    this.floor = new THREE.Mesh(geo, mat);
+    this.floor.receiveShadow = true;
+    this.scene.add(this.floor);
 
-  // ------------------------------------------------------------------ trees
-
-  flat(geo) {
-    const g = geo.index ? geo.toNonIndexed() : geo;
-    g.computeVertexNormals();
-    return g;
-  }
-
-  buildTrees() {
-    const rnd = mulberry32(20241);
-    const spots = [];
-    const tryPlace = (minDist, tries, accept) => {
-      for (let a = 0; a < tries; a++) {
-        const x = (rnd() * 2 - 1) * (WORLD_HALF - 2);
-        const z = (rnd() * 2 - 1) * (WORLD_HALF - 2);
-        if (Math.max(Math.abs(x), Math.abs(z)) < WORLD_HALF - 12) continue; // edge of the arena only
-        if (Math.hypot(x - START.x, z - START.z) < 17) continue; // keep the start area clear
-        if (distToPath(x, z) < 4.2) continue;
-        if (Math.hypot(x - POND.x, z - POND.z) < POND.bowl + 2.5) continue;
-        if (spots.some((s) => Math.hypot(s.x - x, s.z - z) < minDist)) continue;
-        spots.push({ x, z, y: terrainHeight(x, z), r: rnd(), s: 0.8 + rnd() * 0.7, rot: rnd() * 6.28 });
-        if (accept && !accept(spots[spots.length - 1])) spots.pop();
-        if (spots.length >= 16) return;
-      }
-    };
-    tryPlace(9, 1500);
-    this.treeSpots = spots;
-
-    const species = { pine: [], round: [], poplar: [], birch: [] };
-    for (const s of spots) {
-      const r = s.r;
-      (r < 0.34 ? species.pine : r < 0.64 ? species.round : r < 0.82 ? species.poplar : species.birch).push(s);
-    }
-
-    const trunkGeo = new THREE.CylinderGeometry(0.14, 0.24, 1, 7).translate(0, 0.5, 0);
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x7a5535 });
-    const birchMat = new THREE.MeshLambertMaterial({ color: 0xe9e4d6 });
-
-    const pineGeo = this.flat(
-      mergeGeometries([
-        new THREE.ConeGeometry(1.5, 2.1, 8).translate(0, 2.3, 0),
-        new THREE.ConeGeometry(1.2, 1.9, 8).translate(0, 3.3, 0),
-        new THREE.ConeGeometry(0.85, 1.7, 8).translate(0, 4.3, 0),
-      ]),
-    );
-    const roundGeo = this.flat(
-      mergeGeometries([
-        new THREE.IcosahedronGeometry(1.6, 1).translate(0, 3.4, 0),
-        new THREE.IcosahedronGeometry(1.1, 1).translate(0.9, 2.8, 0.4),
-        new THREE.IcosahedronGeometry(1.0, 1).translate(-0.8, 3.0, -0.5),
-      ]),
-    );
-    const poplarGeo = this.flat(new THREE.IcosahedronGeometry(1, 1).scale(0.95, 3.2, 0.95).translate(0, 4.0, 0));
-    const birchGeo = this.flat(
-      mergeGeometries([
-        new THREE.IcosahedronGeometry(1.25, 1).translate(0, 3.3, 0),
-        new THREE.IcosahedronGeometry(0.9, 1).translate(0.7, 2.7, 0.3),
-      ]),
-    );
-    const foliMat = new THREE.MeshLambertMaterial({ flatShading: true });
-
-    const build = (list, foliGeo, tMat, hues, trunkH) => {
-      if (!list.length) return;
-      const trunk = new THREE.InstancedMesh(trunkGeo, tMat, list.length);
-      const foli = new THREE.InstancedMesh(foliGeo, foliMat, list.length);
-      const m = new THREE.Matrix4();
-      const q = new THREE.Quaternion();
-      const c = new THREE.Color();
-      list.forEach((s, i) => {
-        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), s.rot);
-        m.compose(new THREE.Vector3(s.x, s.y - 0.1, s.z), q, new THREE.Vector3(s.s, trunkH * s.s, s.s));
-        trunk.setMatrixAt(i, m);
-        m.compose(new THREE.Vector3(s.x, s.y - 0.1, s.z), q, new THREE.Vector3(s.s, s.s, s.s));
-        foli.setMatrixAt(i, m);
-        c.setHSL(hues[0] + (s.r * 7.3 % 1) * hues[1], hues[2], hues[3] + (s.r * 3.7 % 1) * 0.1);
-        foli.setColorAt(i, c);
-        // static trunk collider
-        const desc = this.physics.RAPIER.ColliderDesc.cylinder(1.6, 0.3 * s.s).setTranslation(s.x, s.y + 1.5, s.z);
-        this.physics.addStaticCollider(desc);
-      });
-      for (const mesh of [trunk, foli]) {
-        mesh.castShadow = true;
-        mesh.receiveShadow = false;
-        mesh.instanceMatrix.needsUpdate = true;
-        this.scene.add(mesh);
-      }
-      foli.instanceColor.needsUpdate = true;
-    };
-    build(species.pine, pineGeo, trunkMat, [0.36, 0.05, 0.5, 0.2], 2.1);
-    build(species.round, roundGeo, trunkMat, [0.27, 0.07, 0.5, 0.3], 2.3);
-    build(species.poplar, poplarGeo, trunkMat, [0.24, 0.06, 0.55, 0.32], 1.6);
-    build(species.birch, birchGeo, birchMat, [0.2, 0.05, 0.6, 0.38], 2.4);
-  }
-
-  // ------------------------------------------------------------------ shore rocks
-
-  buildRocksAndFlowers() {
-    const rnd = mulberry32(777);
+    // flat static collider (same friction / restitution the old terrain used)
     const R = this.physics.RAPIER;
+    this.physics.addStaticCollider(
+      R.ColliderDesc.cuboid(FLOOR_HALF + 20, 2, FLOOR_HALF + 20).setTranslation(0, -2, 0).setFriction(0.8).setRestitution(0.1),
+    );
+  }
 
-    // a few rocks on the pond shore (the only small decoration besides edge trees)
-    const rocks = [];
-    for (let a = 0; a < 7; a++) {
-      const ang = rnd() * Math.PI * 2;
-      const rad = POND.bowl * (0.74 + rnd() * 0.3);
-      rocks.push({ x: POND.x + Math.cos(ang) * rad, z: POND.z + Math.sin(ang) * rad, s: 0.35 + rnd() * 0.7 });
+  // ------------------------------------------------------------------ rim: glowing edge, force field, pylons
+
+  buildRim() {
+    const E = FLOOR_HALF;
+    // glowing edge strips (one merged mesh)
+    const strips = [];
+    const L = E * 2 + 1.2;
+    for (const [x, z, sx, sz] of [[0, E, L, 0.5], [0, -E, L, 0.5], [E, 0, 0.5, L], [-E, 0, 0.5, L]]) {
+      strips.push(new THREE.BoxGeometry(sx, 0.18, sz).translate(x, 0.09, z));
     }
-    const valid = rocks.filter((r) => distToPath(r.x, r.z) > 2.2 && !inPond(r.x, r.z, -1.2));
-    const rockGeo = this.flat(new THREE.DodecahedronGeometry(1, 0));
-    this.rockMesh = new THREE.InstancedMesh(rockGeo, new THREE.MeshLambertMaterial({ flatShading: true }), valid.length);
+    const edge = new THREE.Mesh(mergeGeometries(strips), new THREE.MeshBasicMaterial({ color: CYAN }));
+    this.scene.add(edge);
+
+    // force field: four vertical additive planes fading upwards
+    const ff = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      fog: false,
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: /* glsl */ `
+        varying vec2 vUv;
+        void main(){
+          float h = 1.0 - vUv.y;
+          float a = pow(h, 2.2) * 0.55;
+          float grid = step(0.93, fract(vUv.x * 40.0)) * 0.35 + step(0.94, fract(vUv.y * 5.0)) * 0.3;
+          vec3 c = mix(vec3(0.05,0.55,1.0), vec3(0.6,0.2,1.0), vUv.y);
+          gl_FragColor = vec4(c * (a + grid * h), 1.0);
+        }`,
+    });
+    const H = 9;
+    const planes = [];
+    for (const [x, z, ry] of [[0, E, Math.PI], [0, -E, 0], [E, 0, -Math.PI / 2], [-E, 0, Math.PI / 2]]) {
+      const pg = new THREE.PlaneGeometry(E * 2, H).translate(0, H / 2, 0);
+      pg.rotateY(ry);
+      pg.translate(x, 0, z);
+      planes.push(pg);
+    }
+    this.scene.add(new THREE.Mesh(mergeGeometries(planes), ff));
+
+    // geometric pylons just outside the rim (instanced, dark metal with a glowing stripe)
+    const body = new THREE.BoxGeometry(2.2, 1, 2.2).translate(0, 0.5, 0);
+    const pylons = new THREE.InstancedMesh(body, new THREE.MeshStandardMaterial({ color: 0x141c38, roughness: 0.4, metalness: 0.8 }), 28);
+    const stripe = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 1, 2.3).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ color: VIOLET }), 28);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
-    const e = new THREE.Euler();
-    const c = new THREE.Color();
-    valid.forEach((r, i) => {
-      const y = terrainHeight(r.x, r.z);
-      e.set(rnd() * 0.5, rnd() * 6.28, rnd() * 0.5);
-      q.setFromEuler(e);
-      m.compose(new THREE.Vector3(r.x, y + r.s * 0.18, r.z), q, new THREE.Vector3(r.s * 1.15, r.s * 0.75, r.s));
-      this.rockMesh.setMatrixAt(i, m);
-      c.setHSL(0.09, 0.05 + rnd() * 0.05, 0.42 + rnd() * 0.16);
-      this.rockMesh.setColorAt(i, c);
-      this.physics.addStaticCollider(R.ColliderDesc.ball(r.s * 0.72).setTranslation(r.x, y + r.s * 0.12, r.z));
-    });
-    this.rockMesh.castShadow = true;
-    this.rockMesh.receiveShadow = true;
-    this.scene.add(this.rockMesh);
-
-  }
-
-  // ------------------------------------------------------------------ clouds
-
-  buildClouds() {
-    const cv = document.createElement('canvas');
-    cv.width = cv.height = 128;
-    const g = cv.getContext('2d');
-    const grd = g.createRadialGradient(64, 64, 4, 64, 64, 62);
-    grd.addColorStop(0, 'rgba(255,255,255,0.9)');
-    grd.addColorStop(0.35, 'rgba(255,255,255,0.4)');
-    grd.addColorStop(0.7, 'rgba(255,255,255,0.1)');
-    grd.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grd;
-    g.fillRect(0, 0, 128, 128);
-    const tex = new THREE.CanvasTexture(cv);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const rnd = mulberry32(5);
-    this.cloudGroup = new THREE.Group();
-    for (let i = 0; i < 6; i++) {
-      const cx = (rnd() * 2 - 1) * 160;
-      const cz = (rnd() * 2 - 1) * 160;
-      const cy = 95 + rnd() * 40;
-      for (let k = 0; k < 3; k++) {
-        const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, opacity: 0.6 });
-        const sp = new THREE.Sprite(mat);
-        sp.position.set(cx + (k - 1.5) * 16 + rnd() * 6, cy + rnd() * 3, cz + rnd() * 10);
-        const s = 34 + rnd() * 24;
-        sp.scale.set(s, s * 0.5, 1);
-        this.cloudGroup.add(sp);
+    let i = 0;
+    const out = E + 3.2;
+    for (let k = 0; k < 7; k++) {
+      const t = -E + 8 + (k * (E * 2 - 16)) / 6;
+      for (const [x, z, ry] of [[t, out, 0], [t, -out, 0], [out, t, Math.PI / 2], [-out, t, Math.PI / 2]]) {
+        const h = 3 + ((k * 7 + i) % 4) * 1.6;
+        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), ry);
+        m.compose(new THREE.Vector3(x, 0, z), q, new THREE.Vector3(1, h, 1));
+        pylons.setMatrixAt(i, m);
+        stripe.setMatrixAt(i, m);
+        i++;
       }
     }
-    this.scene.add(this.cloudGroup);
+    this.scene.add(pylons, stripe);
   }
+
+  // ------------------------------------------------------------------ landmark energy ring
+
+  buildRing() {
+    const g = new THREE.Group();
+    const z = -(FLOOR_HALF + 8);
+    const R = 17;
+    const outer = new THREE.Mesh(new THREE.TorusGeometry(R, 0.7, 10, 72), new THREE.MeshBasicMaterial({ color: CYAN }));
+    const mid = new THREE.Mesh(new THREE.TorusGeometry(R * 0.82, 0.35, 8, 64), new THREE.MeshBasicMaterial({ color: MAGENTA }));
+    const inner = new THREE.Mesh(new THREE.TorusGeometry(R * 0.62, 0.22, 8, 56), new THREE.MeshBasicMaterial({ color: VIOLET }));
+    const core = new THREE.Mesh(new THREE.CircleGeometry(R * 0.6, 48), new THREE.MeshBasicMaterial({ color: 0x1a46ff, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }));
+    g.add(outer, mid, inner, core);
+    // base pillars
+    const pillarMat = new THREE.MeshStandardMaterial({ color: 0x141c38, roughness: 0.4, metalness: 0.8 });
+    for (const sx of [-1, 1]) {
+      const p = new THREE.Mesh(new THREE.BoxGeometry(2.4, R * 0.55, 2.4), pillarMat);
+      p.position.set(sx * R * 0.9, R * 0.27, 0);
+      g.add(p);
+    }
+    g.position.set(0, R + 2, z);
+    this.ring = g;
+    this.scene.add(g);
+  }
+
+  // ------------------------------------------------------------------ challenge pad (shared map, toggled)
+
+  buildPad() {
+    const g = new THREE.Group();
+    const disc = new THREE.Mesh(
+      new THREE.CircleGeometry(PAD.r, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x0a2a55, transparent: true, opacity: 0.85, depthWrite: false }),
+    );
+    disc.position.y = 0.02;
+    this.padRing = new THREE.Mesh(new THREE.RingGeometry(PAD.r - 0.25, PAD.r, 56).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: CYAN }));
+    this.padRing.position.y = 0.04;
+    const inner = new THREE.Mesh(new THREE.RingGeometry(PAD.r * 0.55, PAD.r * 0.6, 48).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: MAGENTA }));
+    inner.position.y = 0.04;
+    // beam of light above the pad
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(PAD.r * 0.85, PAD.r * 0.85, 12, 32, 1, true).translate(0, 6, 0),
+      new THREE.MeshBasicMaterial({ color: CYAN, transparent: true, opacity: 0.09, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false }),
+    );
+    g.add(disc, this.padRing, inner, beam);
+    g.position.set(PAD.x, 0, PAD.z);
+    g.visible = false;
+    this.pad = g;
+    this.scene.add(g);
+  }
+
+  setPad(on, ok = false) {
+    this.padOn = on;
+    this.pad.visible = on;
+    this.padRing.material.color.setHex(ok ? 0x48ffa0 : CYAN);
+  }
+
+  // ------------------------------------------------------------------ invisible walls
 
   buildBoundary() {
     const R = this.physics.RAPIER;
@@ -401,7 +229,7 @@ export class World {
       [0, -w, w, 20, 0.5],
     ];
     for (const [x, z, hx, hy, hz] of walls) {
-      this.physics.addStaticCollider(R.ColliderDesc.cuboid(hx, hy, hz).setTranslation(x, hy - 4, z));
+      this.physics.addStaticCollider(R.ColliderDesc.cuboid(hx, hy, hz).setTranslation(x, hy, z));
     }
   }
 
@@ -417,11 +245,9 @@ export class World {
     this.setShadowRange(q.shadowRange);
     this.scene.fog.near = q.fog[0];
     this.scene.fog.far = q.fog[1];
-    this.rockMesh.castShadow = q.rockShadows;
   }
 
   update(dt, t, focus, camera) {
-    this.windUniform.value = t;
     this.sky.position.copy(camera.position);
     // shadow camera follows the player, snapped to shadow texels to avoid shimmering
     const texel = (this.shadowRange * 2) / this.quality.shadowMap;
@@ -431,6 +257,5 @@ export class World {
     this.sun.target.position.set(sx, sy, sz);
     this.sun.position.set(sx + this.sunDir.x * 70, sy + this.sunDir.y * 70, sz + this.sunDir.z * 70);
     this.sun.target.updateMatrixWorld();
-    this.cloudGroup.position.x = Math.sin(t * 0.012) * 70; // slow drift, never pops
   }
 }

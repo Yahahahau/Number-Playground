@@ -22,7 +22,8 @@ function defaults() {
     },
     daily: { date: '', quests: [], rewardClaimed: false },
     rewards: { unlocked: ['fx_default'], selectedFx: 'fx_default' },
-    settings: { quality: 'low', shadows: false, sound: true, volume: 0.8, sensitivity: 1 },
+    settings: { quality: 'low', shadows: false, sound: true, volume: 0.8, sensitivity: 1, mode: 'free' },
+    challenge: { solved: 0 },
   };
 }
 

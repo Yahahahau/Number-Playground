@@ -1310,3 +1310,59 @@ input[type='range'] {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- challenge goal ---------- */
+.goalbar {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--hud-bottom) + var(--pad));
+  transform: translateX(-50%);
+  width: max(180px, min(260px, calc(100% - 2 * (var(--ic) + 2 * var(--pad) + 8px))));
+  padding: 6px 12px 8px;
+  border-radius: 14px;
+  background: var(--bg);
+  border: 1.5px solid #ff4fd8;
+  box-shadow: 0 0 16px rgba(255, 79, 216, 0.35);
+  text-align: center;
+  z-index: 12;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s;
+}
+.goalbar.show {
+  opacity: 1;
+  visibility: visible;
+}
+.goalbar .g1 {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: #ff9be8;
+  font-weight: 800;
+}
+.goalbar .g2 {
+  font-size: clamp(13px, calc(14 * var(--u)), 16px);
+  font-weight: 800;
+  margin-top: 2px;
+}
+.gbar {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.14);
+  margin-top: 5px;
+  overflow: hidden;
+}
+.gbar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #18d8ff, #48ffa0);
+}
+#ui.in-challenge .inspect {
+  top: calc(var(--hud-bottom) + var(--pad) + 62px);
+}
+#ui.in-challenge .tutorial {
+  top: calc(var(--hud-bottom) + var(--pad) + 158px);
+}
+#ui.in-challenge .rotatehint {
+  top: calc(var(--hud-bottom) + var(--pad) + 120px);
+}

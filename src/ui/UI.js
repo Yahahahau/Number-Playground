@@ -15,6 +15,7 @@ export const ICON = {
   spawn: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
   reset: '<path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M3.5 3.5v5h5"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.3 9.4a2.7 2.7 0 1 1 3.6 2.5c-.8.4-1 1-1 1.8"/><circle cx="12" cy="17.2" r=".7" fill="currentColor"/>',
+  flag: '<path d="M6 21V4M6 5h11l-2.5 3.5L17 12H6"/>',
   settings: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>',
   star: '<path d="M12 3l2.7 5.6 6.1.8-4.5 4.2 1.2 6L12 16.7 6.5 19.6l1.2-6L3.2 9.4l6.1-.8z"/>',
   close: '<path d="M5 5l14 14M19 5L5 19"/>',
@@ -63,8 +64,9 @@ export class UI {
     );
     this.rotateHint = $('<div class="rotatehint">Rotate mode: drag to turn the block</div>');
     this.blockCount = $('<div class="blockcount"></div>');
+    this.goal = $('<div class="goalbar"><div class="g1">CHALLENGE</div><div class="g2"></div><div class="gbar"><i></i></div></div>');
 
-    for (const el of [this.touch, this.joyHint, this.joy, this.crosshair, this.inspect, this.toasts, this.mergeText, this.banner, this.tutorial, this.rotateHint, this.blockCount]) r.appendChild(el);
+    for (const el of [this.touch, this.joyHint, this.joy, this.crosshair, this.inspect, this.toasts, this.mergeText, this.banner, this.tutorial, this.rotateHint, this.blockCount, this.goal]) r.appendChild(el);
 
     // top-left: best number found
     const tl = $('<div class="top-left"></div>');
@@ -87,7 +89,8 @@ export class UI {
     this.btnSpawn = this.iconBtn('spawn', 'Spawn');
     this.btnReset = this.iconBtn('reset', 'Reset');
     this.btnHelp = this.iconBtn('help', 'Help');
-    rail.append(this.dailyChip, this.btnSpawn, this.btnReset, this.btnHelp);
+    this.btnMode = this.iconBtn('flag', 'Free');
+    rail.append(this.dailyChip, this.btnSpawn, this.btnReset, this.btnMode, this.btnHelp);
     r.appendChild(rail);
 
     // right column: gun actions
@@ -197,6 +200,11 @@ export class UI {
     this.btnSettings.addEventListener('click', open('settings'));
     this.btnHelp.addEventListener('click', open('help'));
     this.dailyChip.addEventListener('click', open('daily'));
+    this.btnMode.addEventListener('click', () => {
+      g.audio.unlock();
+      g.audio.tap();
+      g.challenge.setMode(g.challenge.active ? 'free' : 'challenge');
+    });
     this.btnReset.addEventListener('click', () => {
       g.audio.unlock();
       g.resetBlocks();
@@ -221,10 +229,22 @@ export class UI {
       this.btnRotate.classList.toggle('rot-on', on);
       this.rotateHint.classList.toggle('show', on);
     });
+    ev.on('modeChanged', ({ mode, target }) => this.showMode(mode, target));
+    ev.on('goalProgress', ({ p }) => this.goal.querySelector('i').style.width = Math.round(p * 100) + '%');
+    this.showMode(this.game.challenge ? (this.game.challenge.active ? 'challenge' : 'free') : 'free', this.game.challenge?.target ?? 8n);
     this.bestChip.addEventListener('click', () => this.panels.open('collection'));
     ev.on('discover', () => this.updateBest());
     this.updateDaily();
     this.updateBest();
+  }
+
+  showMode(mode, target) {
+    const on = mode === 'challenge';
+    this.root.classList.toggle('in-challenge', on);
+    this.goal.classList.toggle('show', on);
+    this.setBtn(this.btnMode, 'flag', on ? 'Goal' : 'Free');
+    this.btnMode.classList.toggle('on', on);
+    if (on) this.goal.querySelector('.g2').textContent = `Put ${fmtCompact(target)} on the pad`;
   }
 
   updateBest() {

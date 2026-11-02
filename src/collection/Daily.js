@@ -60,7 +60,7 @@ export class Daily {
 
   checkDay() {
     const key = todayKey();
-    if (this.state.date === key && this.quests.length === 3) return;
+    if (this.state.date === key && this.quests.length === 3 && !this.quests.some((q) => q.type === 'splash')) return;
     this.generate(key);
   }
 
@@ -103,7 +103,7 @@ export class Daily {
 
     // C: physics gun play
     {
-      const pick = ['splash', 'throw', 'pull', 'rotate', 'tryall'][Math.floor(r() * 5)];
+      const pick = ['throw', 'pull', 'rotate', 'tryall'][Math.floor(r() * 4)];
       let q;
       if (pick === 'splash') {
         const n = 2 + Math.floor(r() * 2);

@@ -5,6 +5,7 @@ import { edgeOf, massOf, tierPos, tierColor, tierIndex, fmtCompact } from '../co
 import { terrainHeight, POND, WATER_Y, WORLD_HALF, inPond, START } from '../world/terrain.js';
 import { GRAVITY } from '../physics/PhysicsWorld.js';
 import { FX_LIST } from '../collection/Daily.js';
+import { createBlockMaterial, applyBlockColor } from './BlockMaterials.js';
 
 export const MAX_BLOCKS = 36;
 export const WARN_BLOCKS = 30;
@@ -134,14 +135,7 @@ export class BlockManager {
     b.labelEntry = this.labels.acquire(value);
     tierColor(b.tier, b.color, 0);
     if (o.fromColor) b.color.copy(o.fromColor);
-    b.matBlock = new THREE.MeshStandardMaterial({
-      color: b.color.clone(),
-      roughness: 0.3,
-      metalness: 0.08,
-      emissive: b.color.clone(),
-      emissiveIntensity: 0.12,
-      envMapIntensity: 0.9,
-    });
+    b.matBlock = createBlockMaterial(value, b.tier, b.color);
     b.matLabel = new THREE.MeshBasicMaterial({
       map: b.labelEntry.tex,
       transparent: true,
@@ -540,10 +534,8 @@ export class BlockManager {
       // colour transition (+ rainbow tier)
       tierColor(b.tier, _c, time);
       b.color.lerp(_c, 1 - Math.exp(-dt * 5));
-      b.matBlock.color.copy(b.color);
       b.glowCur += (b.glow - b.glowCur) * (1 - Math.exp(-dt * 14));
-      b.matBlock.emissive.copy(b.color);
-      b.matBlock.emissiveIntensity = 0.1 + b.glowCur * 0.42;
+      applyBlockColor(b.matBlock, b.color, b.glowCur);
 
       // pop-in animation
       if (b.appear < 1) {

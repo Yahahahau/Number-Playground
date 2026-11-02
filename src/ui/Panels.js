@@ -370,7 +370,13 @@ export class Panels {
     const s = g.save.data.settings;
     const st = g.save.data.stats;
     body.innerHTML = `
-      <div class="section" style="margin-top:4px">Graphics quality</div>
+      <div class="section" style="margin-top:4px">Game mode</div>
+      <div class="seg" style="grid-template-columns:repeat(2,1fr)">
+        <button type="button" data-mode="free" class="${s.mode !== 'challenge' ? 'on' : ''}">Free Play</button>
+        <button type="button" data-mode="challenge" class="${s.mode === 'challenge' ? 'on' : ''}">Challenge</button>
+      </div>
+      <p class="note">Challenge uses the same lab and adds a glowing target pad: deliver the number shown on screen.</p>
+      <div class="section">Graphics quality</div>
       <div class="seg">${Object.values(QUALITY)
         .map((q) => `<button type="button" data-q="${q.id}" class="${s.quality === q.id ? 'on' : ''}">${q.label}</button>`)
         .join('')}</div>
@@ -387,13 +393,19 @@ export class Panels {
         <dt style="color:var(--muted)">Numbers discovered</dt><dd style="margin:0;text-align:right;font-weight:700">${g.collection.size}</dd>
         <dt style="color:var(--muted)">Highest number</dt><dd style="margin:0;text-align:right;font-weight:700;word-break:break-all">${fmtCompact(g.collection.maxValue)}</dd>
         <dt style="color:var(--muted)">Blocks spawned</dt><dd style="margin:0;text-align:right;font-weight:700">${st.spawned}</dd>
-        <dt style="color:var(--muted)">Splashes</dt><dd style="margin:0;text-align:right;font-weight:700">${st.splashes}</dd>
         <dt style="color:var(--muted)">Days played</dt><dd style="margin:0;text-align:right;font-weight:700">${st.daysPlayed}</dd>
         <dt style="color:var(--muted)">Daily stars</dt><dd style="margin:0;text-align:right;font-weight:700">${st.stars}</dd>
       </dl></div>
       <div class="section">Danger zone</div>
       <p class="note">“Reset Blocks” (the ↺ button) only clears blocks in the world. This button wipes your saved progress.</p>
       <button class="danger" type="button" data-reset>Reset Progress…</button>`;
+    body.querySelectorAll('[data-mode]').forEach((b) =>
+      b.addEventListener('click', () => {
+        g.challenge.setMode(b.dataset.mode);
+        g.audio.tap();
+        this.render();
+      }),
+    );
     body.querySelectorAll('[data-q]').forEach((b) =>
       b.addEventListener('click', () => {
         g.setQuality(b.dataset.q);

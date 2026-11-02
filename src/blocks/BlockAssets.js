@@ -5,12 +5,12 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { fmtLabel } from '../core/bignum.js';
 
-export const CORNER = 0.1; // corner radius as a fraction of the edge
+export const CORNER = 0.14; // corner radius as a fraction of the edge
 
 let _geo = null;
 export function getBlockGeometry() {
   if (_geo) return _geo;
-  const box = new RoundedBoxGeometry(1, 1, 1, 3, CORNER);
+  const box = new RoundedBoxGeometry(1, 1, 1, 4, CORNER);
   const faces = [
     { n: [0, 0, 1], u: [0, 1, 0] },
     { n: [0, 0, -1], u: [0, 1, 0] },
@@ -23,7 +23,7 @@ export function getBlockGeometry() {
     const N = new THREE.Vector3(...n);
     const U = new THREE.Vector3(...u);
     const R = new THREE.Vector3().crossVectors(U, N);
-    const q = new THREE.PlaneGeometry(0.84, 0.84);
+    const q = new THREE.PlaneGeometry(0.72, 0.72);
     q.translate(0, 0, 0.5 + 0.004);
     q.applyMatrix4(new THREE.Matrix4().makeBasis(R, U, N));
     const ni = q.toNonIndexed(); // RoundedBoxGeometry is non-indexed, so every part must be too
@@ -73,23 +73,21 @@ export class LabelCache {
     g.textBaseline = 'middle';
     g.lineJoin = 'round';
     g.lineCap = 'round';
-    const family = '"Arial Black", "Segoe UI", system-ui, sans-serif';
-    // adaptive size: long numbers shrink (and tighten) to always fit the face
-    let size = text.length <= 2 ? 170 : text.length <= 3 ? 150 : 128;
-    const maxW = 206;
-    g.font = `900 ${size}px ${family}`;
+    const family = '"Oxanium", "Arial Narrow", "Arial Black", system-ui, sans-serif';
+    // adaptive size: long numbers shrink to always fit the face
+    let size = text.length <= 2 ? 176 : text.length <= 3 ? 156 : 134;
+    const maxW = 208;
+    g.font = `800 ${size}px ${family}`;
     let w = g.measureText(text).width;
     if (w > maxW) {
       size = Math.max(34, Math.floor((size * maxW) / w));
-      g.font = `900 ${size}px ${family}`;
+      g.font = `800 ${size}px ${family}`;
     }
     const x = S / 2;
-    const y = S / 2 + size * 0.04;
-    g.strokeStyle = 'rgba(255,255,255,0.95)'; // thin highlight rim
+    const y = S / 2 + size * 0.03;
+    // thick, even near-black outline (stroke is centred on the glyph edge, so ~half shows outside)
+    g.strokeStyle = 'rgba(4,6,16,0.98)';
     g.lineWidth = size * 0.2;
-    g.strokeText(text, x, y);
-    g.strokeStyle = 'rgba(8,16,36,0.96)'; // dark outline for contrast
-    g.lineWidth = size * 0.13;
     g.strokeText(text, x, y);
     g.fillStyle = '#ffffff';
     g.fillText(text, x, y);

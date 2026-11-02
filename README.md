@@ -40,3 +40,11 @@ Pushing to `main` builds the game and publishes it to the `gh-pages` branch auto
 (`.github/workflows/deploy.yml`). Enable it once: Settings -> Pages -> Source: *Deploy from a branch*,
 branch `gh-pages`, folder `/ (root)`. The build uses relative paths, so the same output also works inside an
 iframe / in-app web view. Every deploy produces new hashed file names, so reloading always loads the latest version.
+
+
+## Number Lab update
+
+- Map: futuristic Number Lab (flat metallic floor, force-field rim, energy ring, static space skybox). Nature and the pond were removed.
+- Modes: Free Play and Challenge share one map; Challenge shows a target pad (Settings or the flag button).
+- Blocks: rounder bevel, bundled Oxanium display font with a thick dark outline.
+- Materials (`src/blocks/BlockMaterials.js`): matte -> ceramic -> metal -> iridescent -> crystal -> patterns -> screen-locked galaxy, chosen by number tier; milestones (2^10, 2^20 ...) always get the galaxy. The galaxy samples a 2D image from `gl_FragCoord`, so the picture stays fixed to the screen while the block masks it.

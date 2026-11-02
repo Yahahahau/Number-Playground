@@ -7,8 +7,9 @@ import { getQuality } from '../settings/Quality.js';
 import { Collection } from '../collection/Collection.js';
 import { Daily, todayKey } from '../collection/Daily.js';
 import { World } from '../world/World.js';
-import { createSky, HORIZON } from '../world/Sky.js';
-import { Water } from '../water/Water.js';
+import { createSky } from '../world/Sky.js';
+import { Challenge } from './Challenge.js';
+import { SCREEN } from '../blocks/BlockMaterials.js';
 import { Effects } from '../effects/Effects.js';
 import { AudioSystem } from '../audio/AudioSystem.js';
 import { Player } from '../player/Player.js';
@@ -16,9 +17,7 @@ import { Input } from '../player/Input.js';
 import { BlockManager } from '../blocks/BlockManager.js';
 import { PhysicsGun } from '../weapons/PhysicsGun.js';
 import { UI } from '../ui/UI.js';
-import { POND, WATER_Y, inPond } from '../world/terrain.js';
 
-const UNDERWATER = new THREE.Color('#0a4f78');
 
 export class Game {
   static async create(canvas, appEl, status) {
@@ -81,7 +80,8 @@ export class Game {
     // ---- world
     status('Building the world…');
     this.world = new World(this.scene, this.physics, this.quality);
-    this.water = new Water(this.scene, this.quality, this.world.sunDir);
+    // the pond is gone: a no-op stand-in keeps every old `game.water.*` call site harmless
+    this.water = { setQuality() {}, update() {}, setFoamSources() {}, addRipple() {}, surfaceY: () => -1000 };
     this.effects = new Effects(this.scene, this.quality, 800);
     this.buildEnvironment();
 
@@ -99,6 +99,8 @@ export class Game {
     this.gun.setLightEnv(this.scene.environment);
     this.blocks = new BlockManager(this);
     this.blocks.spawnInitial();
+    this.challenge = new Challenge(this);
+    this.challenge.apply();
 
     this.bindControls();
     this.applySettings();
@@ -120,12 +122,24 @@ export class Game {
   }
 
   buildEnvironment() {
-    // image-based lighting generated from the same procedural sky the water reflects
+    // image-based lighting baked ONCE from the space skybox plus a few bright light panels, so
+    // metallic / crystal blocks have something interesting to reflect (no real-time reflections).
     const pm = new THREE.PMREMGenerator(this.renderer);
     const envScene = new THREE.Scene();
-    envScene.add(createSky(this.world.sunDir));
+    envScene.add(createSky());
+    const panel = (color, x, y, z, w, h) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }));
+      m.position.set(x, y, z);
+      m.lookAt(0, 0, 0);
+      envScene.add(m);
+    };
+    panel(0xffffff, 0, 150, 40, 160, 60);
+    panel(0x20d8ff, 160, 40, 0, 120, 40);
+    panel(0xff30d0, -150, 30, -60, 120, 40);
+    panel(0x7a3cff, 0, 20, -170, 200, 30);
+    panel(0xbfe8ff, 0, 15, 170, 160, 20);
     this.scene.environment = pm.fromScene(envScene, 0.02).texture;
-    this.scene.environmentIntensity = 0.75;
+    this.scene.environmentIntensity = 1.0;
     pm.dispose();
   }
 
@@ -293,6 +307,7 @@ export class Game {
     this._h = h;
     this._pr = pr;
     this.renderer.setSize(w, h, false); // canvas CSS size is 100%; only the drawing buffer changes
+    this.renderer.getDrawingBufferSize(SCREEN.value); // screen-locked block patterns use pixel coordinates
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.effects?.setViewportHeight(h * pr);
@@ -338,6 +353,8 @@ export class Game {
     this.collection.discover(1n, { countFind: false });
     this.daily.generate(todayKey());
     this.applySettings();
+    this.challenge.apply();
+    this.ui.updateBest();
     this.setQuality('low');
     this.blocks.reset();
     this.events.emit('toast', { text: 'Progress reset', kind: 'info' });
@@ -408,37 +425,16 @@ export class Game {
     this.camera.updateMatrixWorld(true);
 
     this.world.update(dt, this.time, this.player.position, this.camera);
-    this.water.update(dt, this.camera, this.renderer, this.scene);
     this.blocks.render(alpha, dt, this.time, this.camera);
     this.gun.update(dt, this.time, this.camera, this.player);
+    this.challenge.update(dt);
     this.effects.update(dt, this.camera);
     this.ui.update();
-    this.audio.setPondProximity(Math.hypot(this.camera.position.x - POND.x, this.camera.position.z - POND.z));
-    this.updateUnderwater(dt);
 
     const r = this.renderer;
     r.clear();
     r.render(this.scene, this.camera);
     r.clearDepth();
     r.render(this.gun.scene, this.camera);
-  }
-
-  updateUnderwater(dt) {
-    const c = this.camera.position;
-    const under = c.y < WATER_Y && inPond(c.x, c.z, 0);
-    if (under === this.under) return;
-    this.under = under;
-    const fog = this.scene.fog;
-    if (under) {
-      fog.color.copy(UNDERWATER);
-      this.scene.background = UNDERWATER;
-      fog.near = 0.3;
-      fog.far = 14;
-    } else {
-      fog.color.copy(HORIZON);
-      this.scene.background = HORIZON.clone();
-      fog.near = this.quality.fog[0];
-      fog.far = this.quality.fog[1];
-    }
   }
 }
